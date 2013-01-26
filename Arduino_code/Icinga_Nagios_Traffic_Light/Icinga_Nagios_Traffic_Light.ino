@@ -28,7 +28,7 @@ void setup() {
   Udp.begin(localPort);
 
   Serial.begin(9600);
-  TL_1.init(13,22,21);
+  TL_1.init(26,30,32);
   TL_2.init(24,25,26);
 }
 
@@ -58,6 +58,8 @@ void loop() {
     Serial.print(", port ");
     Serial.println(Udp.remotePort());
 
+   // memcpy(packetBuffer,"A",UDP_TX_PACKET_MAX_SIZE);
+
     // read the packet into packetBufffer
     Udp.read(packetBuffer,UDP_TX_PACKET_MAX_SIZE);
     Serial.println("Contents:");
@@ -67,7 +69,10 @@ void loop() {
     
     
     traffic_light_number = parameter.substring(0,1);
-    command = parameter.substring(2,parameter.length());
+    command = String("");
+    command = parameter.substring(2,packetSize);
+    
+    
     Serial.println(traffic_light_number);
     Serial.print(command);
     Serial.print(";");
@@ -92,11 +97,11 @@ void loop() {
       }
       if(command.compareTo("greenOn") == 0) 
       {
-        TL_1.rOn(); 
+        TL_1.greenOn(); 
       }
       if(command.compareTo("greenOff") == 0) 
       {
-        TL_1.redOff(); 
+        TL_1.greenOff(); 
       }
     } 
 
