@@ -77,6 +77,7 @@ void loop() {
     Serial.print(command);
     Serial.print(";");
     
+	//Traffic Light 1
     if(traffic_light_number.compareTo("1") == 0) 
     {
       if(command.compareTo("redOn") == 0) 
@@ -105,7 +106,36 @@ void loop() {
       }
     } 
 
-
+	//Traffic Light 2
+    if(traffic_light_number.compareTo("2") == 0) 
+    {
+      if(command.compareTo("redOn") == 0) 
+      {
+        TL_2.redOn(); 
+      }
+      if(command.compareTo("redOff") == 0) 
+      {
+        TL_2.redOff(); 
+      }
+      if(command.compareTo("yellowOn") == 0) 
+      {
+        TL_2.yellowOn(); 
+      }
+      if(command.compareTo("yellowOff") == 0) 
+      {
+        TL_2.yellowOff(); 
+      }
+      if(command.compareTo("greenOn") == 0) 
+      {
+        TL_2.greenOn(); 
+      }
+      if(command.compareTo("greenOff") == 0) 
+      {
+        TL_2.greenOff(); 
+      }
+    } 
+	
+	
     /* send a reply, to the IP address and port that sent us the packet we received
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
     Udp.write(ReplyBuffer);
