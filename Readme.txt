@@ -15,8 +15,8 @@ It is used to bring the actual overall state of the monitoring system to a traff
 Two traffic lights available. One can be used for the service status and the other one can be used for hosts status.
 
 How it work's:
-1. On the Icinga oder Nagios Server is the script control_traffic_light.pl called with crontab.
-2. The Script sends messages with the UDP protocol to the Arduino and change the traffic light corresponding to the overall status of icinga or nagios.
+1. On the Icinga server or the Nagios server is the script control_traffic_light.pl called with crontab.
+2. The script sends messages with the UDP protocol to the Arduino and changes the traffic light corresponding to the overall status of icinga or nagios.
 3. It is also possible to turn on and off the traffic lights from the console:
    - control_traffic_light.pl "1 redOn" to turn the red LED of traffic light one on.
    - control_traffic_light.pl "1 redOff" to turn the red LED of traffic light one off.
