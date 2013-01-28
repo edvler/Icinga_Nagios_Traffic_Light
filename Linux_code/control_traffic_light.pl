@@ -20,7 +20,19 @@ my $nr_services_traffic_light="1";
 my $nr_hosts_traffic_light="2";
 
 #####
-my $parameter=$ARGV[0];
+my ($sock,$data);
+
+$sock = new IO::Socket::INET (
+	PeerAddr   => '172.31.0.177:54000',
+	Proto        => 'udp'
+) or die "ERROR creating Socket: $!\n";
+
+if($ARGV[0] != "") {
+	$sock->send($ARGV[0]);
+	$sock->flush();
+	$sock->close();
+	exit 0;
+}
 
 my $dbh = "";
 my $sql = "";
@@ -77,7 +89,7 @@ if ($SHOW_NAMES == 1) {
 	print "$count_services_critical services marked as critical and not acknowledged:\n";
 	while(@ergebnis=$sth->fetchrow_array)
 	{
-	  print " - " . $ergebnis[1] . " " . $ergebnis[1] . " \n";
+	  print " - " . $ergebnis[0] . " - " . $ergebnis[1] . " \n";
 	}
 }
 $sth->finish();
@@ -101,7 +113,7 @@ if ($SHOW_NAMES == 1) {
 	print "$count_services_warning services marked as warning and not acknowledged:\n";
 	while(@ergebnis=$sth->fetchrow_array)
 	{
-	  print " - " . $ergebnis[1] . " " . $ergebnis[1] . " \n";
+	  print " - " . $ergebnis[0] . " - " . $ergebnis[1] . " \n";
 	}
 }
 $sth->finish();
@@ -110,25 +122,51 @@ $sth->finish();
 $dbh->disconnect();
 
 
-my ($sock,$data);
-
-$sock = new IO::Socket::INET (
-	PeerAddr   => '172.31.0.177:54000',
-	Proto        => 'udp'
-) or die "ERROR creating Socket: $!\n";
-
 #$count_services_critical=0;
 
 if ($count_services_critical > 0) {
-	$sock->send($nr_services_traffic_light . " redOn");
-	$sock->flush();
-	$sock->send($nr_services_traffic_light . " yellowOff");
-	$sock->flush();
-	$sock->send($nr_services_traffic_light . " greenOff");
-	$sock->flush();
+	redOn($nr_services_traffic_light);
 }
 
 if ($count_services_warning > 0 and $count_services_critical==0) {
+	yellowOn($nr_services_traffic_light);
+}
+
+if ($count_services_warning == 0 and $count_services_critical==0) {
+	greenOn($nr_services_traffic_light);
+}
+
+
+
+if ($count_hosts_down == 0) {
+	greenOn($nr_hosts_traffic_light);
+}
+
+if ($count_hosts_down > 0) {
+	redOn($nr_hosts_traffic_light);
+}
+
+$sock->close();
+
+
+
+
+
+sub redOn() {
+	my $traffic_light_nr = shift;
+
+	$sock->send($traffic_light_nr . " redOn");
+	$sock->flush();
+	$sock->send($traffic_light_nr . " yellowOff");
+	$sock->flush();
+	$sock->send($traffic_light_nr . " greenOff");
+	$sock->flush();
+}
+
+
+sub yellowOn() {
+	my $traffic_light_nr = shift;
+
 	$sock->send($nr_services_traffic_light . " yellowOn");
 	$sock->flush();
 	$sock->send($nr_services_traffic_light . " redOff");
@@ -137,7 +175,10 @@ if ($count_services_warning > 0 and $count_services_critical==0) {
 	$sock->flush();
 }
 
-if ($count_services_warning == 0 and $count_services_critical==0) {
+
+sub greenOn() {
+	my $traffic_light_nr = shift;
+
 	$sock->send($nr_services_traffic_light . " greenOn");
 	$sock->flush();
 	$sock->send($nr_services_traffic_light . " redOff");
@@ -147,28 +188,6 @@ if ($count_services_warning == 0 and $count_services_critical==0) {
 }
 
 
-
-if ($count_hosts_down == 0) {
-	$sock->send($nr_hosts_traffic_light . " greenOn");
-	$sock->flush();
-	$sock->send($nr_hosts_traffic_light . " redOff");
-	$sock->flush();
-	$sock->send($nr_hosts_traffic_light . " yellowOff");
-	$sock->flush();
-}
-
-if ($count_hosts_down > 0) {
-	$sock->send($nr_hosts_traffic_light . " redOn");
-	$sock->flush();
-	$sock->send($nr_hosts_traffic_light . " greenOff");
-	$sock->flush();
-	$sock->send($nr_hosts_traffic_light . " yellowOff");
-	$sock->flush();
-}
-
-
-
-$sock->close();
 
 
 
