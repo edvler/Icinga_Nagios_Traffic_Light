@@ -60,13 +60,22 @@ void setup() {
   Ethernet.begin(mac, ip, gateway, subnet);
   Udp.begin(localPort);
 
+/*
+  for (int i=22;i<33;i++) {
+     pinMode(i, OUTPUT);  
+     digitalWrite(i,HIGH);
+     delay(10000);
+     digitalWrite(i,LOW);
+  }
+*/
+
   // set the PIN's on the Arduino Board for each Traffic Light
   // .init(RED,YELLOW,GREEN)
-  TL_1.init(31,28,29);
-  TL_2.init(25,22,23);
+  TL_1.init(22,23,25);
+  TL_2.init(31,29,28);
   //TL_3 and TL_4 only has a red and green sign
-  TL_3.init(30,40,24);
-  TL_4.init(27,40,26);
+  TL_3.init(24,40,30);
+  TL_4.init(26,40,27);
   
   // test all signs on startup
   TL_1.allOn();
