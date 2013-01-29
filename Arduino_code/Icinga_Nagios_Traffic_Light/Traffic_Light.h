@@ -12,6 +12,9 @@ class Traffic_Light {
   public:    
     void init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN);
     
+    void allOn();
+    void allOff();
+    
     void redOn();
     void redOff();
     

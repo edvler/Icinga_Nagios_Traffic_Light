@@ -38,4 +38,15 @@ void Traffic_Light::greenOff() {
   digitalWrite(greenPIN, LOW);
 }
 
+void Traffic_Light::allOn() {
+  redOn();
+  yellowOn();
+  greenOn(); 
+}
+
+void Traffic_Light::allOff() {
+  redOff();
+  yellowOff();
+  greenOff(); 
+}
 
