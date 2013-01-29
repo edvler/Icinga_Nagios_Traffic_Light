@@ -2,6 +2,8 @@
 Icinga Nagios Ampel mit Arduino
 */
 
+//http://svg-edit.googlecode.com/svn/branches/2.6/editor/svg-editor.html#delete
+
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
@@ -21,6 +23,8 @@ EthernetUDP Udp;
 
 Traffic_Light TL_1;
 Traffic_Light TL_2;
+Traffic_Light TL_3;
+Traffic_Light TL_4;
 
 void setup() {
   // start the Ethernet and UDP:
@@ -28,8 +32,16 @@ void setup() {
   Udp.begin(localPort);
 
   Serial.begin(9600);
-  TL_1.init(26,30,32);
-  TL_2.init(24,25,26);
+  TL_1.init(31,28,29);
+  TL_2.init(25,22,23);
+  
+  TL_3.init(30,40,24);
+  TL_4.init(27,40,26);
+  
+  TL_1.allOn();
+  TL_2.allOn();
+  TL_3.allOn();
+  TL_4.allOn();
 }
 
 
@@ -70,7 +82,7 @@ void loop() {
     
     traffic_light_number = parameter.substring(0,1);
     command = String("");
-    command = parameter.substring(2,packetSize);
+    command = parameter.substring(1,packetSize);
     
     
     Serial.println(traffic_light_number);
@@ -134,7 +146,46 @@ void loop() {
         TL_2.greenOff(); 
       }
     } 
-	
+
+    if(traffic_light_number.compareTo("3") == 0) 
+    {
+      if(command.compareTo("redOn") == 0) 
+      {
+        TL_3.redOn(); 
+      }
+      if(command.compareTo("redOff") == 0) 
+      {
+        TL_3.redOff(); 
+      }
+      if(command.compareTo("greenOn") == 0) 
+      {
+        TL_3.greenOn(); 
+      }
+      if(command.compareTo("greenOff") == 0) 
+      {
+        TL_3.greenOff(); 
+      }
+    } 
+
+    if(traffic_light_number.compareTo("4") == 0) 
+    {
+      if(command.compareTo("redOn") == 0) 
+      {
+        TL_4.redOn(); 
+      }
+      if(command.compareTo("redOff") == 0) 
+      {
+        TL_4.redOff(); 
+      }
+      if(command.compareTo("greenOn") == 0) 
+      {
+        TL_4.greenOn(); 
+      }
+      if(command.compareTo("greenOff") == 0) 
+      {
+        TL_4.greenOff(); 
+      }
+    } 	
 	
     /* send a reply, to the IP address and port that sent us the packet we received
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
