@@ -39,9 +39,17 @@ void setup() {
   TL_4.init(27,40,26);
   
   TL_1.allOn();
+  delay(500);
+  TL_1.allOff();
   TL_2.allOn();
+  delay(500);
+  TL_2.allOff();
   TL_3.allOn();
+  delay(500);
+  TL_3.allOff();
   TL_4.allOn();
+  delay(500);
+  TL_4.allOff();
 }
 
 
@@ -87,7 +95,25 @@ void loop() {
     
     Serial.println(traffic_light_number);
     Serial.print(command);
-    Serial.print(";");
+    Serial.println(";");
+    
+    if(traffic_light_number.compareTo("a") == 0) {
+      if(command.compareTo("llOn") == 0) 
+      {
+        TL_1.allOn(); 
+        TL_2.allOn(); 
+        TL_3.allOn(); 
+        TL_4.allOn(); 
+      }
+      if(command.compareTo("llOff") == 0) 
+      {
+        TL_1.allOff(); 
+        TL_2.allOff(); 
+        TL_3.allOff(); 
+        TL_4.allOff();
+      }             
+    }
+
     
 	//Traffic Light 1
     if(traffic_light_number.compareTo("1") == 0) 
