@@ -10,6 +10,7 @@ class Traffic_Light {
     byte greenPIN;
     
   public:    
+    void init(byte p_redPIN, byte p_greenPIN);
     void init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN);
     
     void allOn();

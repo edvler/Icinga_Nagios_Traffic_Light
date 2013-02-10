@@ -1,15 +1,18 @@
 #include "Traffic_Light.h"
 
-
-void Traffic_Light::init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN) {
+void Traffic_Light::init(byte p_redPIN, byte p_greenPIN) {
  redPIN=p_redPIN;
  pinMode(redPIN, OUTPUT);
  
- yellowPIN=p_yellowPIN;
- pinMode(yellowPIN, OUTPUT);
- 
  greenPIN=p_greenPIN;
  pinMode(greenPIN, OUTPUT); 
+}
+
+void Traffic_Light::init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN) {
+ init(p_redPIN,p_greenPIN);
+ 
+ yellowPIN=p_yellowPIN;
+ pinMode(yellowPIN, OUTPUT);
 }
 
 void Traffic_Light::redOn() {
