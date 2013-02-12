@@ -34,8 +34,7 @@ commands are case-sensitive!
 #include <Ethernet.h>
 #include <WebServer.h>
 
-#include <EEPROM.h>
-#include "EEPROMAnything.h"
+
 
 
 
@@ -53,6 +52,9 @@ commands are case-sensitive!
 * Code for the EEPROM related things
 * 
 */
+#include <EEPROM.h>
+#include "EEPROMAnything.h"
+
 #define RESET_PIN 40	//Connect a button to this PIN. If the button is hold, an the device is turned on the default ethernet settings are restored.
 
 /*structure which is stored in the eeprom. 
@@ -482,6 +484,11 @@ void indexHtml(WebServer &server, WebServer::ConnectionType type, char *url_tail
     
   server.print("<h1>Icinga/Nagios Traffic Light</h1><br>");
   server.print("<a href=\"setupEth.html\">Ethernet Setup</a>");
+  server.print("RAM: ");
+  server.print(Sys->ramFree());
+  server.print(" byte free of ");
+  server.print(Sys->ramSize());
+  server.println(" byte<br><br>");
   server.printP(Page_end);
 }
 // END Webserver section #######################################################################################################################################
