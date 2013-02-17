@@ -8,10 +8,14 @@ class Traffic_Light {
     byte redPIN;
     byte yellowPIN;
     byte greenPIN;
+    byte light_states;
+    byte last_states;
     
   public:    
     void init(byte p_redPIN, byte p_greenPIN);
     void init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN);
+    
+    byte signsChanged();
     
     void allOn();
     void allOff();
@@ -27,3 +31,4 @@ class Traffic_Light {
 };
 
 #endif
+
