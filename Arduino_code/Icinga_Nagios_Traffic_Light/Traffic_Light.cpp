@@ -16,7 +16,7 @@ void Traffic_Light::init(byte p_redPIN, byte p_yellowPIN, byte p_greenPIN) {
 }
 
 byte Traffic_Light::signsChanged() {
-  int retval = -1 ;
+  int retval = -1;
   
   if (light_states != last_states) {
     retval = light_states;
@@ -24,6 +24,10 @@ byte Traffic_Light::signsChanged() {
   }
   
   return retval;
+}
+
+byte Traffic_Light::signsState() {
+  return light_states;
 }
 
 void Traffic_Light::redOn() {

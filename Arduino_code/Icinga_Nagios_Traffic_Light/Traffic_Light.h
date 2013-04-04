@@ -17,6 +17,8 @@ class Traffic_Light {
     
     byte signsChanged();
     
+    byte signsState();
+    
     void allOn();
     void allOff();
     
