@@ -1,50 +1,136 @@
 /*
-Icinga Nagios Ampel mit Arduino
+Icinga Nagios Traffic Light
+
 GitHub: https://github.com/edvler/Icinga_Nagios_Traffic_Light
 Web-Blog: http://www.edvler-blog.de/icinga_nagios_traffic_light_ampel
 
 Author: Matthias Maderer
 Date: 29.01.2013
 
-Info: Look at the Readme.txt or the Web-Blog
+
+
+This is a project for icinga (https://www.icinga.org/) or nagios (http://www.nagios.org/).
+Both are monitoring systems for IT infrastructures. Almost everything can be monitored, from a simple host to a complex services.
+But at the end it's realy simple. In icinga an nagios are 3 major possible states avaliabe.
+Each service or host could be in one of the following states:
+
+- good (green)
+- warning (orange)
+- red (critical)
+
+This is where my traffic light comes in.
+It is used to bring the actual overall state of the monitoring system to a traffic light.
+
+Four traffic lights available. One and two have 3 signs, three and four have 2 signs.
+
+The traffic light is controlled over network! It's possible to configure the network settings over webinterface.
+The default IP for the Webinterface is 192.168.0.111.
+
+It's possible to send commands via UDP or per Webrequest over a browser or wget.
+
+
+
+Setup:
+Build your traffic light according to the traffic_light_schema.fzz (open it with fritzing.org).
+
+Prepare your scetch:
+- The traffic light is playing sounds if enabled. See #define PIEZO_PIN
+- Decide if you send your commands over web or UDP. See #define USE_UDP
+- Check where the reset PIN for the webduino interface is connected. See #define RESET_PIN
+
+
+
+Upload this scetch to your Arduino with a Ethernet Shield.
+Now use your browser to open the URL http://192.168.0.111/.
+You will see a webinterface to configure the network settings.
+For more informations about the webinterface look at www.edvler-blog.de/arduino_networksetup_webinterface_with_eeprom
+
+The control_traffic_light.pl reads the actual state from the ndoutils or idoutils database and sends the state to the traffic light.
+The only thing you need to do is setup up the IP address and the port of your arduino and your database settings in the control_traffic_light.pl.
+
+
+Then call it with crontab. 
+Now you have your own icinga / nagios traffic light.
+
+
+
+
+It's also possible to send commands manual, to set a individual state if needed. 
+
+How it work's with UDP:
+1. On the Icinga server or the Nagios server is the script control_traffic_light.pl called with crontab.
+2. The script sends messages with the UDP protocol to the Arduino and changes the traffic light corresponding to the overall status of icinga or nagios.
+3. It is also possible to turn on and off the traffic lights from the console:
+   - control_traffic_light.pl 1redOn       #to turn the red LED of the traffic light one on.
+   - control_traffic_light.pl 1redOff      #to turn the red LED of the traffic light one off.
+ 
+   - control_traffic_light.pl 2yellowOn    #to turn the yellow LED of traffic the light TWO on.
+   - control_traffic_light.pl 2yellowOff   #to turn the yellow LED of traffic the light TWO off.
+  
+   - control_traffic_light.pl 2greenOn     #to turn the green LED of traffic the light TWO on.
+   - control_traffic_light.pl 1greenOn     #to turn the grenn LED of traffic the light ONE off.
+
+   - control_traffic_light.pl 3greenOn     #to turn the green LED of traffic the light TWO on.
+   - control_traffic_light.pl 4greenOn     #to turn the grenn LED of traffic the light ONE off.
+
+... and so on.
+   
+   - control_traffic_light.pl allOn        #to turn all LED's of the traffic light on
+   - control_traffic_light.pl allOff       #to turn all LED's of the traffic light on
+   
+commands are case-sensitive!
+
+
+
+How it work's with WEB/HTTP requests:
+Open your Browser and type one of the following URL's:
+http://<ARDUINO_IP>/tl.html?tl2=greenOn - Turn on the green sign of traffic light TWO
+http://<ARDUINO_IP>/tl.html?tl2=greenOff - Turn off the green sign of traffic light TWO
+
+http://<ARDUINO_IP>/tl.html?tl1=redOn - Turn on the red sign of traffic light ONE
+http://<ARDUINO_IP>/tl.html?tl1=redOff - Turn off the red sign of traffic light ONE
+
+http://<ARDUINO_IP>/tl.html?tl1=yellowOn - Turn on the yellow sign of traffic light ONE
+http://<ARDUINO_IP>/tl.html?tl3=yellowOn - Turn on the yellow sign of traffic light THREE
+....
+
+you could use "wget --spider http://<ARDUINO_IP>/tl.html?tl3=yellowOn" on your linux console
+Please replace <ARDUINO_IP> with the IP of your Arduino
+
 
 Lizenz:
 http://creativecommons.org
 "Creative Commons Namensnennung - Nicht-kommerziell - Weitergabe unter gleichen Bedingungen 3.0 Unported Lizenz"
-
-Possible commands to send per Ethernet UDP:
-1redOn - Turn on the red sign of traffic light ONE
-2yellowOn - Turn on the yellow sign of traffic light TWO
-3greenOn - Turn on the green sign of traffic light THREE
-...
-
-1redOff - Turn off the red sign of traffic light ONE
-2yellowOff - Turn off the yellow sign of traffic light TWO
-...
-
-allOn - Turn on all signs
-allOff - Turn off all signs
-
-commands are case-sensitive!
-
 */
 
+#define WEBDUINO_FAVICON_DATA "" // no favicon
+//#define DEBUG  //uncomment for serial debug output
+#define USE_SYSTEM_LIBRARY //comment out if you want to save some space (about 1 Byte). You wouldn't see uptime and free RAM if it's commented out.
+#define SERIAL_BAUD 9600
 
-#include <SPI.h>
-#include <Ethernet.h>
+
+#define PIEZO_PIN 5     //Comment out to use a piezo speaker to announced sign changes
+#define USE_UDP			//Comment out if don't use UDP. If commented out the only way to send commands is over WEB requests.
 
 
+#include "SPI.h" // new include
+#include "avr/pgmspace.h" // new include
+#include "Ethernet.h"
+#include "WebServer.h"
 
 
 /* #############################################################################################################################################################
-* Settings section.
-* Some values may be changed
+* Create instances of the traffic light class
 */
-//#define DEBUG					//Display debug output to the serial console
-#define PIEZO_PIN 5     //Comment out to use a piezo speaker to announced sign changes
+
+#define MAX_COMMAND_LENGTH 11    //Max length for commands         
+
+#include "Traffic_Light.h"
+Traffic_Light TL_1;
+Traffic_Light TL_2;
+Traffic_Light TL_3;
+Traffic_Light TL_4;
 // #############################################################################################################################################################
-
-
 
 
 
@@ -59,11 +145,13 @@ commands are case-sensitive!
 
 #define RESET_PIN 40	//Connect a button to this PIN. If the button is hold, an the device is turned on the default ethernet settings are restored.
 
-/*structure which is stored in the eeprom. 
+/* structure which is stored in the eeprom. 
 * Look at "EEPROMAnything.h" for the functions storing and reading the struct
 */
 struct config_t
 {
+    
+    byte config_set;
     byte use_dhcp;
     byte dhcp_refresh_minutes;
     byte mac[6];
@@ -71,54 +159,61 @@ struct config_t
     byte gateway[4];
     byte subnet[4];
     byte dns_server[4];
-    unsigned int localPort;
     unsigned int webserverPort;
-    byte config_set;
     byte play_sound;
+    unsigned int UDPport;
 } eeprom_config;
 
-/*The default Ethernet settings. 
+/** 
+* set_EEPROM_Default() function
+*
+* The default settings. 
 * This settings are used when no config is present or the reset button is pressed.
 */
 void set_EEPROM_Default() {
-    eeprom_config.config_set=1;
+    eeprom_config.config_set=1;  // dont change! It's used to check if the config is already set
   
-    eeprom_config.use_dhcp=0;
-    eeprom_config.dhcp_refresh_minutes=60;
+    eeprom_config.use_dhcp=0; // use DHCP per default
+    eeprom_config.dhcp_refresh_minutes=60; // refresh the DHCP every 60 minutes
     
-    eeprom_config.play_sound=1;
+    eeprom_config.play_sound=0;
+    eeprom_config.UDPport=54000;
+    
   
-    eeprom_config.mac[0]=0xA1;
-    eeprom_config.mac[1]=0xA2;
-    eeprom_config.mac[2]=0xA3;
-    eeprom_config.mac[3]=0xA4;
-    eeprom_config.mac[4]=0xA5;
-    eeprom_config.mac[5]=0xA0;
+    // set the default MAC address. In this case its DE:AD:BE:EF:FE:ED
+    eeprom_config.mac[0]=0xDE;  
+    eeprom_config.mac[1]=0xAD;
+    eeprom_config.mac[2]=0xBE;
+    eeprom_config.mac[3]=0xEF;
+    eeprom_config.mac[4]=0x11;
+    eeprom_config.mac[5]=0x22;
     
-    eeprom_config.ip[0]=172;
-    eeprom_config.ip[1]=31;
+    // set the default IP address for the arduino. In this case its 192.168.0.111
+    eeprom_config.ip[0]=192;
+    eeprom_config.ip[1]=168;
     eeprom_config.ip[2]=0;
-    eeprom_config.ip[3]=123;
+    eeprom_config.ip[3]=111;
   
-    eeprom_config.gateway[0]=172;
-    eeprom_config.gateway[1]=31;
+    // set the default GATEWAY. In this case its 192.168.0.254
+    eeprom_config.gateway[0]=192;
+    eeprom_config.gateway[1]=168;
     eeprom_config.gateway[2]=0;
     eeprom_config.gateway[3]=254;
     
+    // set the default SUBNET. In this case its 255.255.255.0
     eeprom_config.subnet[0]=255;
     eeprom_config.subnet[1]=255;
     eeprom_config.subnet[2]=255;
     eeprom_config.subnet[3]=0;
 
-    eeprom_config.dns_server[0]=172;
-    eeprom_config.dns_server[1]=31;
+    // set the default DNS SERVER. In this case its 192.168.0.254
+    eeprom_config.dns_server[0]=192;
+    eeprom_config.dns_server[1]=168;
     eeprom_config.dns_server[2]=0;
     eeprom_config.dns_server[3]=254;
 
-    eeprom_config.localPort=54000;
+    // set the default Webserver Port. In this case its Port 80
     eeprom_config.webserverPort=80;
-    
-    EEPROM_writeAnything(0, eeprom_config);
     
     #ifdef DEBUG
       Serial.println("Config reset");
@@ -139,54 +234,118 @@ void read_EEPROM_Settings() {
   pinMode(RESET_PIN, INPUT);
   digitalWrite(RESET_PIN, HIGH);
   
+  // read the current config
   EEPROM_readAnything(0, eeprom_config);
   
+  // check if config is present or if reset button is pressed
   if (eeprom_config.config_set != 1 || digitalRead(RESET_PIN) == LOW) {
+    // set default values
     set_EEPROM_Default();
+    
+    // write the config to eeprom
+    EEPROM_writeAnything(0, eeprom_config);
   } 
 }
-// #############################################################################################################################################################
 
-
-
-
-
-
-
-/* #############################################################################################################################################################
-* System functions
-* Runtime and RAM informations
+/**
+* print_EEPROM_Settings() function
+*
+* This function is used for debugging the configuration.
+* It prints the actual configuration to the serial port.
 */
-#include <System.h> //Quellcode: Look at [Sketchbook Speicherort]\libraries\System ([Sketchbook Speicherort] is configured in the Arduino-IDE: Files -> Settings)
-System Sys;
+#ifdef DEBUG
+void print_EEPROM_Settings() {
+    Serial.print("IP: ");
+    for(int i = 0; i<4; i++) {
+      Serial.print(eeprom_config.ip[i]);
+      if (i<3) {
+        Serial.print('.');
+      }
+    }
+    Serial.println();
+  
+    Serial.print("Subnet: ");
+    for(int i = 0; i<4; i++) {
+      Serial.print(eeprom_config.subnet[i]);
+      if (i<3) {
+        Serial.print('.');
+      }
+    }
+    Serial.println();
+    
+    Serial.print("Gateway: ");
+    for(int i = 0; i<4; i++) {
+      Serial.print(eeprom_config.gateway[i]);
+      if (i<3) {
+        Serial.print('.');
+      }
+    }
+    Serial.println();
+
+    Serial.print("DNS Server: ");
+    for(int i = 0; i<4; i++) {
+      Serial.print(eeprom_config.dns_server[i]);
+      if (i<3) {
+        Serial.print('.');
+      }
+    }
+    Serial.println();
+    
+    Serial.print("MAC: ");
+    for (int a=0;a<6;a++) {
+      Serial.print(eeprom_config.mac[a],HEX);
+      if(a<5) {
+        Serial.print(":");
+      }
+    }
+    Serial.println();
+    
+    Serial.print("Webserver Port: ");
+    Serial.println(eeprom_config.webserverPort);
+    
+    Serial.print("USE DHCP: ");
+    Serial.println(eeprom_config.use_dhcp);
+    
+    Serial.print(" DHCP renew every ");
+    Serial.print(eeprom_config.dhcp_refresh_minutes);
+    Serial.println(" minutes");
+    
+    Serial.print("Config Set: ");
+    Serial.println(eeprom_config.config_set);
+
+}
+#endif
+
 // #############################################################################################################################################################
-
-
-
-
-
 
 
 /* START Network section #######################################################################################################################################
-* Webserver Code
+* Code for setting up network connection
 */
-long last_dhcp_renew;
+unsigned long last_dhcp_renew;
 byte dhcp_state;
 
-char packetBuffer[UDP_TX_PACKET_MAX_SIZE];             // buffer to hold incoming udp packets
-EthernetUDP Udp;                                       // An EthernetUDP instance to let us send and receive packets over UDP
-
+#ifdef USE_UDP
+  EthernetUDP Udp;                                       // An EthernetUDP instance to let us send and receive packets over UDP
+  char packetBuffer[UDP_TX_PACKET_MAX_SIZE];             // buffer to hold incoming udp packets
+#endif
 
 /**
-renewDHCP() function
-Renew the DHCP relase in a given interval.
+* renewDHCP() function
+* Renew the DHCP relase in a given interval.
+* 
+* Overview:
+* - Check if interval = 0 and set it to 1
+* - Check if renew interval is reached and renew the lease
 */
 void renewDHCP(int interval) {
+  unsigned long interval_millis = interval * 60000;
+
   if (interval == 0 ) {
      interval = 1; 
   }
   if (eeprom_config.use_dhcp==1) {
-    if((millis() - last_dhcp_renew) >  (interval*60*1000)) {
+    if((millis() - last_dhcp_renew) >  interval_millis) {
       last_dhcp_renew=millis();
       dhcp_state = Ethernet.maintain();
     }
@@ -195,7 +354,7 @@ void renewDHCP(int interval) {
 
 
 /**
-* setupNetwork() function (webpage)
+* setupNetwork() function
 * This function is used to setupup the network according to the values stored in the eeprom
 *
 * Overview:
@@ -208,507 +367,541 @@ void renewDHCP(int interval) {
 void setupNetwork() {
   read_EEPROM_Settings();
   
+  #ifdef DEBUG
+   print_EEPROM_Settings();
+  #endif
 
-  byte mac[] = { eeprom_config.mac[0], eeprom_config.mac[1], eeprom_config.mac[2], eeprom_config.mac[3], eeprom_config.mac[4], eeprom_config.mac[5] };  
+ // byte mac[] = { eeprom_config.mac[0], eeprom_config.mac[1], eeprom_config.mac[2], eeprom_config.mac[3], eeprom_config.mac[4], eeprom_config.mac[5] };  
   
   if (eeprom_config.use_dhcp != 1) {
     IPAddress ip(eeprom_config.ip[0], eeprom_config.ip[1], eeprom_config.ip[2], eeprom_config.ip[3]);                                               
     IPAddress gateway (eeprom_config.gateway[0],eeprom_config.gateway[1],eeprom_config.gateway[2],eeprom_config.gateway[3]);                      
     IPAddress subnet  (eeprom_config.subnet[0], eeprom_config.subnet[1], eeprom_config.subnet[2], eeprom_config.subnet[3]);  
     IPAddress dns_server  (eeprom_config.dns_server[0], eeprom_config.dns_server[1], eeprom_config.dns_server[2], eeprom_config.dns_server[3]);
-    Ethernet.begin(mac, ip, dns_server, gateway, subnet);
-     
-  #ifdef DEBUG
-    Serial.print("IP: ");
-    Serial.println(ip);
-    Serial.print("Gateway: ");
-    Serial.println(gateway);
-    Serial.print("Subnet: ");
-    Serial.println(subnet);
-    Serial.print("DNS Server: ");
-    Serial.println(dns_server);
-    Serial.print("MAC: ");
-    for (int a=0;a<6;a++) {
-      Serial.print(mac[a],HEX);
-      if(a<5) {
-        Serial.print(":");
-      }
-    }
-	Serial.println();
-    Serial.print("UDP Port to listen on: ");
-    Serial.println(eeprom_config.localPort);
-    Serial.print("Webserver Port: ");
-    Serial.println(eeprom_config.webserverPort);
-    Serial.print("USE DHCP: ");
-    Serial.println(eeprom_config.use_dhcp);
-    Serial.print("Config Set: ");
-    Serial.println(eeprom_config.config_set);
-  #endif
+    Ethernet.begin(eeprom_config.mac, ip, dns_server, gateway, subnet);
   } else {
-    if (Ethernet.begin(mac) == 0) {
+    if (Ethernet.begin(eeprom_config.mac) == 0) {
       Serial.print("Failed to configure Ethernet using DHCP");
-        // print your local IP address:
     }
     Serial.println(Ethernet.localIP());
   }
 }
 // END Network section #########################################################################################################################################
 
-/* START Webserver section #####################################################################################################################################
+
+/* WEB-Server section #######################################################################################################################################
 * Webserver Code
 */
 
-//Networkservice  for webserver -- For an example please see http://arduino.cc/en/Tutorial/WebServer
-#define WEBSERVER_PORT 80 //HTTP Port for webserver (default 80)
+#ifdef USE_SYSTEM_LIBRARY
+#include <System.h>
+System sys;
+#endif
 
-EthernetServer * Webserver;
-EthernetClient client;
-String request; //String to store requests
+/* Store all string in the FLASH storage to free SRAM.
+The P() is a function from Webduino.
+*/
+P(Page_start) = "<html><head><title>Web_EEPROM_Setup</title></head><body>\n";
+P(Page_end) = "</body></html>";
 
-String Page_start = "<html><head><title>Icinga/Nagios traffic light</title></head><body>\n";
-String Page_end = "</body></html>";
-String Get_head = "<h1>GET from ";
-String Post_head = "<h1>POST to ";
-String Unknown_head = "<h1>UNKNOWN request for ";
-String Default_head = "unidentified URL requested.</h1><br>\n";
-String Parsed_head = "parsed.html requested.</h1><br>\n";
-String Good_tail_begin = "URL tail = '";
-String Bad_tail_begin = "INCOMPLETE URL tail = '";
-String Tail_end = "'<br>\n";
-String Parsed_tail_begin = "URL parameters:<br>\n";
-String Parsed_item_separator = " = '";
-String Params_end = "End of parameters<br>\n";
-String Post_params_begin = "Parameters sent by POST:<br>\n";
-String Line_break = "<br>\n";
+P(Http400) = "HTTP 400 - BAD REQUEST";
+P(Index) = "<h1>index.html</h1><br>Welcome to Nagios and Icinga traffic light! Please set up your Netzwork: <a href=\"setupNet.html\">NETWORK SETUP</a>";
 
-String DHCP = "<b>USE DHCP: </b>";
-String MAC = "<b>MAC address: </b>";
-String IP = "<b>IP address: </b>";
-String GW = "<b>Gateway address: </b>";
-String DNS = "<b>DNS Server address: </b>";
-String NM = "<b>Netmask: </b>";
-String WSP = "<b>Webserver-port: </b>";
-String LP = "<b>UDP port to listen on: </b>";
-String DHCP_REFRESH = "<b>DHCP renew time in minutes: </b>";
-String PLAY_SOUND = "<b>Play sounds on sign change: </b>";
+P(Form_eth_start) = "<FORM action=\"setupNet.html\" method=\"get\">";
+P(Form_end) = "<FORM>";
+P(Form_input_send) = "<INPUT type=\"submit\" value=\"Set config\">";
 
-String Form_start = "<FORM action=\"setupEth.html\" method=\"get\">";
-String Form_end = "</FORM>";
+P(Form_input_text_start) = "<input type=\"text\" name=\"";
+P(Form_input_value)  = "\" value=\"";
+P(Form_input_size2) = "\" maxlength=\"2\" size=\"2";
+P(Form_input_size3) = "\" maxlength=\"3\" size=\"3";
+P(Form_input_end) = "\">\n";
 
-String Form_input_text_start = "<input type=\"text\" name=\"";
-String Form_input_cb_start = "<input type=\"checkbox\" name=\"";
-String Form_input_value  = "\" value=\"";
-String Form_input_end = "\">";
-String Form_input_send = "<INPUT type=\"submit\" value=\"Send\">";
+P(MAC) = "MAC address: ";
+P(IP) = "IP address: ";
+P(SUBNET) = "Subnet: ";
+P(GW) = "GW address: ";
+P(DNS_SERVER) = "DNS server: ";
+P(WEB_PORT) = "Webserver port (1-65535): ";
+P(DHCP_ACTIVE) = "Use DHCP: ";
+P(DHCP_REFRESH) = "Renew interval for DHCP in minutes (1 - 255): ";
 
-String br = "<br>";
+P(Form_cb) = "<input type=\"radio\" name=\"23\" value=\"";
+P(Form_cb_checked) = " checked ";
+P(Form_cb_on) = ">On";
+P(Form_cb_off) = ">Off";
+
+P(br) = "<br>\n";
+
+P(table_start) = "<table>";
+P(table_tr_start) = "<tr>";
+P(table_tr_end) = "</tr>";
+P(table_td_start) = "<td>";
+P(table_td_end) = "</td>";
+P(table_end) = "</table>";
+
+P(Config_set) = "<font size=\"6\" color=\"red\">New configuration stored! <br>Please turn off and on your Arduino or use the reset button!</font><br>";
+
+P(DHCP_STATE_TIME) = "DHCP last renew timestamp (sec)";
+P(DHCP_STATE) = "DHCP renew return code (sec)";
+
+P(UDP_PORT) = "UDP Port for receiving commands:";
+P(SOUND) = "Play sounds (1=on, 0=0ff):";
+
+
+P(UPTIME) = "Uptime: ";
+
+#ifdef USE_SYSTEM_LIBRARY
+P(RAM_1) = "RAM (byte): ";
+P(RAM_2) = " free of ";
+#endif
+
+/* This creates an pointer to instance of the webserver. */
+WebServer * webserver;
+
 
 /**
-* serveClient()
-* This function checks if a client has connected.
-* If a new client is connected, each character is read into the request string and the string is searched for parameters.
-* If parameters present, call the parseURL() function to get the parameter names and values.
+* indexHTML() function
+* This function is used to send the index.html to the client.
 */
-void serveWebClient() {
-  client = Webserver->available(); 
-  if (client) { //Is a new client avaliable?
-    boolean currentLineIsBlank = true;
-    byte currentLine = 0;
-    byte currentChar = 0;
-    
-    boolean requestEnd = false;
-    
-    request = "";
+void indexHTML(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
+{
+  /* this line sends the standard "we're all OK" headers back to the
+     browser */
+  server.httpSuccess();
 
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();     
+  /* if we're handling a GET or POST, we can output our data here.
+     For a HEAD request, we just stop after outputting headers. */
+  if (type == WebServer::HEAD)
+    return;
+    
+  server.printP(Page_start);
+  
+  server.printP(Index);
+  
+  server.printP(Page_end);
+    
+}
+
+/**
+* setupNetHTML() function
+* This function is used to send the setupNet.html to the client.
+*
+* Overview:
+* - Send a HTTP 200 OK Header
+* - If get parameters exists assign them to the corresponding variable in the eeprom_config struct
+* - Print the configuration
+*
+* Parameters are simple numbers. The name of the parameter is converted to an int with the atoi function.
+* This saves some code for setting the MAC and IP addresses.
+*/
+#define NAMELEN 5
+#define VALUELEN 7
+void setupNetHTML(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
+{
+  URLPARAM_RESULT rc;
+  char name[NAMELEN];
+  char value[VALUELEN];
+  boolean params_present = false;
+  byte param_number = 0;
+
+  /* this line sends the standard "we're all OK" headers back to the
+     browser */
+  server.httpSuccess();
+
+  /* if we're handling a GET or POST, we can output our data here.
+     For a HEAD request, we just stop after outputting headers. */
+  if (type == WebServer::HEAD)
+    return;
+
+  server.printP(Page_start);
+
+  // check for parameters
+  if (strlen(url_tail)) {
+    while (strlen(url_tail)) {
+      rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
+      if (rc != URLPARAM_EOS) {
+        params_present=true;
+        // debug output for parameters
+        #ifdef DEBUG
+        Serial.print(name);
+        server.print(name);
+        Serial.print(" - "); 
+        server.print(" - ");
+        Serial.println(value);
+        server.print(value);
+        server.print("<br>");
+        #endif
         
-        //Eine Anfrage ist komplett wenn der Client ein \r\n\r\n (leere Zeile) schickt!        
-        if (c == '\n' && currentLineIsBlank) {
-          //Wenn das aktuelle Zeichen \n (Newline) ist UND currentLineIsBlank=true (dies bedeutet: auch das vorhergehende Zeichen war ein \n oder \r\n) ist ...
-          //... dann ist die Anfrage komplett und kann verarbeitet werden.
-          Serial.println(request);
-          
-          
-          if (request.indexOf("?") != -1) {
-            //Prï¿½fen ob ein ? im request vorhanden ist. Dies deutet auf Parameter hin.
-            printHeader200();
-            parseURL();
-            indexHTML();
-          }
-          else if (request.compareTo("/")==0 || request.compareTo("/index.html") == 0){
-            //Prï¿½fen ob die Grundseite aufgerufen wurde
-            printHeader200();
-            indexHTML();
-          } 
-          else if (request.compareTo("/setupEth.html")==0){
-            //Prï¿½fen ob die Grundseite aufgerufen wurde
-            printHeader200();
-            Serial.println(request);
-            setupEthHTML();
-          } 
-          else {
-            //Alles andere ergibt einen ERROR404.
-            printHeader404();  
-          }
-          break;
+        
+        param_number = atoi(name);
+ 
+        // read MAC address
+        if (param_number >=0 && param_number <=5) {
+          eeprom_config.mac[param_number]=strtol(value,NULL,16);
+        }
+    
+        // read IP address
+        if (param_number >=6 && param_number <=9) {
+          eeprom_config.ip[param_number-6]=atoi(value);
+        }
+    
+        // read SUBNET
+        if (param_number >=10 && param_number <=13) {
+          eeprom_config.subnet[param_number-10]=atoi(value);
+        }
+    
+        // read GATEWAY
+        if (param_number >=14 && param_number <=17) {
+          eeprom_config.gateway[param_number-14]=atoi(value);
+        }
+    
+        // read DNS-SERVER
+        if (param_number >=18 && param_number <=21) {
+          eeprom_config.dns_server[param_number-18]=atoi(value);
         }
         
-        if (c == '\n') {
-          // Es beginnt eine neue Zeile
-          currentLineIsBlank = true;
+        // read WEBServer port
+        if (param_number == 22) {
+          eeprom_config.webserverPort=atoi(value);
+        }
+        
+        // read DHCP ON/OFF
+        if (param_number == 23) {
+          eeprom_config.use_dhcp=atoi(value);
+        }
+    
+        // read DHCP renew interval
+        if (param_number == 24) {
+          eeprom_config.dhcp_refresh_minutes=atoi(value);
+        }
 
-          currentLine++;
-          currentChar = 0;
+        // read DHCP renew interval
+        if (param_number == 25) {
+          eeprom_config.UDPport=atoi(value);
         } 
-        else if (c != '\r') {
-          // wenn ungleich \r (Carriage Return) kann es sich nur um Zeichen handeln.
-          currentLineIsBlank = false;
 
-          //Mit den folgenden Beiden if Bedingungen wird der GET String ausgelesen aus der ersten Zeile des Requests ausgelesen.
-          if (currentLine == 0 && currentChar >4 && c == ' ') {
-            //Wenn es sich um die erste Zeile handelt UND das aktuelle Zeichen an der Position >4 ist UND das Zeichen ein Leerzeichen ist...
-            //entspricht dies dem Ende der angeforderten Seite inkl. Parameter
-            requestEnd = true;
-          }
+        // read DHCP renew interval
+        if (param_number == 26) {
+          eeprom_config.play_sound=atoi(value);
+        } 
 
-          if (currentLine == 0 && currentChar >3 && requestEnd == false) {
-            //Wenn es sich um die erste Zeile handelt UND das aktuelle Zeichen an der Position >3 ist UND das Ende der angeforderten URL noch nicht erreich ist...
-            //das Zeichen zum request Buffer hinzufï¿½gen.
-            request.concat(c);
-          }
-
-          //Kleine Sicherheit um bei URL's lï¿½nger 250 Zeichen eine grobe Fehlfunktion zu vermeiden
-          if (currentChar < 250) {
-            currentChar++;    
-          }          
-        }
-      } //if client.avaliable
-    } //while
-    client.stop();
-    //Serial.println("client disonnected");
-  }
-}
-
-void setupEthHTML() {
-  client.println(Page_start);
-  
-  client.print(Form_start);
-
-  client.print(MAC);
-  for (int a=0;a<6;a++) {
-    client.print(Form_input_text_start);
-    client.print(a);
-    client.print(Form_input_value);
-    client.print(eeprom_config.mac[a],HEX);
-    client.println(Form_input_end);
-  }
-  client.println(br);
- 
-  client.print(IP);
-  for (int a=0;a<4;a++) {
-    client.print(Form_input_text_start);
-    client.print(a+6);
-    client.print(Form_input_value);
-    client.print(eeprom_config.ip[a]);
-    client.println(Form_input_end);
-  }
-  client.println(br);
-
-  client.print(GW);
-  for (int a=0;a<4;a++) {
-    client.print(Form_input_text_start);
-    client.print(a+10);
-    client.print(Form_input_value);
-    client.print(eeprom_config.gateway[a]);
-    client.println(Form_input_end);
-  }
-  client.println(br);
-  
-  client.print(NM);
-  for (int a=0;a<4;a++) {
-    client.print(Form_input_text_start);
-    client.print(a+14);
-    client.print(Form_input_value);
-    client.print(eeprom_config.subnet[a]);
-    client.println(Form_input_end);
-  }
-  client.println(br);
-  
-  client.print(DNS);
-  for (int a=0;a<4;a++) {
-    client.print(Form_input_text_start);
-    client.print(a+18);
-    client.print(Form_input_value);
-    client.print(eeprom_config.dns_server[a]);
-    client.println(Form_input_end);
-  }
-  client.println(br);
-  
-  client.print(WSP);
-  client.print(Form_input_text_start);
-  client.print(22);
-  client.print(Form_input_value);
-  client.print(eeprom_config.webserverPort);
-  client.println(Form_input_end);
-  client.println(br);
-
-  client.print(LP);
-  client.print(Form_input_text_start);
-  client.print(23);
-  client.print(Form_input_value);
-  client.print(eeprom_config.localPort);
-  client.println(Form_input_end);
-  client.println(br);
-
-  client.print(DHCP);
-  client.print(Form_input_cb_start);
-  client.print(24);
-  client.print(Form_input_value);
-  client.print("1\"");
-  if (eeprom_config.use_dhcp == 1) {
-    client.print("checked");
-  }
-  client.println(">");
-
-  client.print(DHCP_REFRESH);
-  client.print(Form_input_text_start);
-  client.print(25);
-  client.print(Form_input_value);
-  client.print(eeprom_config.dhcp_refresh_minutes);
-  client.println(Form_input_end);
-  client.println(br);
-
-  client.print(PLAY_SOUND);
-  client.print(Form_input_cb_start);
-  client.print(26);
-  client.print(Form_input_value);
-  client.print("1\"");
-  if (eeprom_config.play_sound == 1) {
-    client.print("checked");
-  }
-  client.println(">");
-
-  client.print(Form_input_send);
-  client.print(Form_end);
-
-  //HTMl Tags schlieÃŸen
-  client.println(Page_end);
-}
-
-
-/**
-* Diese Funktion wertet die Parameter, welche per URL ï¿½bergeben wurden aus.
-* Es kï¿½nnen nur Parameter mit Zahlen ï¿½bergeben werden!
-* 
-* NICHT zulï¿½ssig ist z.B.: http://heizung/index.html?a=1&0=asdf
-* NICHT zulï¿½ssiger Parameter a = 1
-* NICHT zulï¿½ssiger Parameter 0 = asfd
-* 
-* Zulï¿½ssig ist z.B. http://heizung/index.html?0=5&1=5
-* Parameter 0 = 5
-* Parameter 1 = 5
-* 
-* Ablauf:
-* Die URL wird wird das vorkommen des Zeichens & durchsucht. 
-* Die Zeichen bis zum & werden in einen eigenen String param gespeichert.
-* Der String wird nach der Postition des Zeichens = durchsucht.
-* Anschlieï¿½end wird ein char Array jeweils mit den Zeichen vor dem = und nach dem = gefï¿½llt.
-* Der Inhalt wird in einen Int umgewandelt.
-* 
-* Das Ergebnis wird im var_array abgespeichert.
-* Hier ist das Zeichen vor dem = das Array-Element und das Zeichen nach dem = der Wert.
-* In der automatic() Funktion wird das var_array wieder ausgelesen und Relay's, Room's Timer, etc.. auf den entsprechenden Wert gesetzt.
-*/
-void parseURL() {
-  String param = "";
-  int char_pos = 0;
-  boolean more_params = true;
-  
-  char param_name[3];
-  char param_value[10];
-  byte param_number;
-  
-  char_pos = request.indexOf("?");
-  
-  //Sind ï¿½berhaupt Parameter-Paare vorhanden?
-  if (char_pos != -1) {
-    //Abschneiden was nicht gebraucht wird. Dies ist alles vor dem ? inkl dem ?
-    request = request.substring(char_pos+1);
-
-
-    eeprom_config.use_dhcp=0;
-    eeprom_config.play_sound=0;
-
-    //So lange den String abarbeiten bis Ende erreicht
-    while(more_params == true) {
-      //Position des nï¿½chsten & festellen
-      char_pos = request.indexOf("&");
-      
-      //Sind weitere Parameter vorhanden ist char_pos ungleich -1 oder handelt es sich um das letzte Parameter-Paar
-      if (char_pos != -1) {
-        //Weitere Parameter-Paare vorhanden
-        param = request.substring(0,char_pos); //das aktuelle Parameter-Paar in einen eigenen String speichern
-        request = request.substring(char_pos+1); // url_str um das aktuelle Parameter-Paar kï¿½rzen
-      } else {
-        //Keine Parameter-Paar mehr vorhanden
-        param = request; //das aktuelle Parameter-Paar ist gleich dem url_str
-        more_params = false; //Bedingung fï¿½r while Schleifenende setzten
       }
- 
-      //Position des = Zeichens festellen im Parameter-Paar
-      char_pos = param.indexOf("=");
-
-
-      //Alle Zeichen bis zum = Zeichen in ein char Array speichern
-      for (int i = 0; i<char_pos;i++) {
-        param_name[i] = param.charAt(i); 
-	if (i==(char_pos-1)) {
-	  param_name[i+1]='\0';
-	}
-      }
-	  
-     
-      //Alle Zeichen nach dem = Zeichen in ein char Array speichern
-      for (int i = char_pos+1;i < param.length();i++) {
-        param_value[i-char_pos-1] = param.charAt(i);
-	if (i==(param.length()-1)) {
-	  param_value[i-char_pos]='\0';
-	}
-      }
-
-      param_number = atoi(param_name);  
-
-      #ifdef DEBUG
-        client.println(param_number);
-        client.println(":");
-        client.println(param_value);
-        client.println(br);
-      #endif
-      
-      if (param_number >=0 && param_number <=5) {
-        eeprom_config.mac[param_number]=strtol(param_value,NULL,16);
-      }
-
-      if (param_number >=6 && param_number <=9) {
-        eeprom_config.ip[param_number-6]=atoi(param_value);
-      }
-
-      if (param_number >=10 && param_number <=13) {
-        eeprom_config.gateway[param_number-10]=atoi(param_value);
-      }
-
-      if (param_number >=14 && param_number <=17) {
-        eeprom_config.subnet[param_number-14]=atoi(param_value);
-      }
-
-      if (param_number >=18 && param_number <=21) {
-        eeprom_config.dns_server[param_number-18]=atoi(param_value);
-      }
-      
-      if (param_number == 22) {
-        eeprom_config.webserverPort=atoi(param_value);
-      }
-      
-      if (param_number == 23) {
-        eeprom_config.localPort=atoi(param_value);
-      }
-
-      if (param_number == 24) {
-        eeprom_config.use_dhcp=atoi(param_value);
-      }
-
-      if (param_number == 25) {
-        eeprom_config.dhcp_refresh_minutes=atoi(param_value);
-      }
-      
-      if (param_number == 26) {
-        eeprom_config.play_sound=atoi(param_value);
-      }
-      
     }
-    
     EEPROM_writeAnything(0, eeprom_config);
-  } 
-}
+  }
 
-
-
-
-/**
-Diese Funktionen gibt einen HTML Status 200 OK Header an den Client zurï¿½ck
-Wichtig ist Connection: close zu ï¿½bermitteln um die Verbindung zu beenden.
-*/
-void printHeader200() {
-  // send a 200 standard http response header
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connnection: close");
-  client.println();
-  client.println("<!DOCTYPE HTML>");  
-}
-
-/**
-Diese Funktionen gibt einen HTML Status 404 Not Found Header an den Client zurï¿½ck
-Wichtig ist Connection: close zu ï¿½bermitteln um die Verbindung zu beenden.
-*/
-void printHeader404() {
-  // send a 200 standard http response header
-  client.println("HTTP/1.q 404 Not Found");
-  client.println("Content-Type: text/html");
-  client.println("Connnection: close");
-  client.println();
-  client.println("unknown page!");
-
-}
-
-void indexHTML() {
-  //Ãœberschrift
-  client.println(Page_start);
-
-  client.print("<h1>Icinga/Nagios Traffic Light</h1><br>");
-  client.print("<a href=\"setupEth.html\">Ethernet Setup</a>");
+  //print the form
+  server.printP(Form_eth_start);
   
-  client.print("<br><br>RAM: ");
-  client.print(Sys.ramFree());
-  client.print(" byte free of ");
-  client.print(Sys.ramSize());
-  client.println(" byte<br><br>");
-  client.println("Uptime: ");
-  client.print(Sys.uptime());
+  if(params_present==true) {
+     server.printP(Config_set);
+  }
+    
+  server.printP(table_start);
   
-  if (eeprom_config.use_dhcp==1) {
-  client.print("<br>DHCP Status: ");
-  client.println(dhcp_state);
+  // print the current MAC
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(MAC);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  for (int a=0;a<6;a++) {
+    server.printP(Form_input_text_start);
+    server.print(a);
+    server.printP(Form_input_value);
+    server.print(eeprom_config.mac[a],HEX);
+    server.printP(Form_input_size2);    
+    server.printP(Form_input_end);
+  }
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  // print the current IP
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(IP);
+  server.printP(table_td_end);
+  server.printP(table_td_start);    
+  for (int a=0;a<4;a++) {
+    server.printP(Form_input_text_start);
+    server.print(a+6);
+    server.printP(Form_input_value);
+    server.print(eeprom_config.ip[a]);
+    server.printP(Form_input_size3);
+    server.printP(Form_input_end);
+  }
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+  
+
+  // print the current SUBNET
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(SUBNET);
+  server.printP(table_td_end);
+  server.printP(table_td_start); 
+  for (int a=0;a<4;a++) {
+    server.printP(Form_input_text_start);
+    server.print(a+10);
+    server.printP(Form_input_value);
+    server.print(eeprom_config.subnet[a]);
+    server.printP(Form_input_size3);
+    server.printP(Form_input_end);
+  }
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  // print the current GATEWAY
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(GW);
+  server.printP(table_td_end);
+  server.printP(table_td_start); 
+  for (int a=0;a<4;a++) {
+    server.printP(Form_input_text_start);
+    server.print(a+14);
+    server.printP(Form_input_value);
+    server.print(eeprom_config.gateway[a]);
+    server.printP(Form_input_size3);
+    server.printP(Form_input_end);
+  }
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  // print the current DNS-SERVER
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(DNS_SERVER);
+  server.printP(table_td_end);
+  server.printP(table_td_start); 
+  for (int a=0;a<4;a++) {
+    server.printP(Form_input_text_start);
+    server.print(a+18);
+    server.printP(Form_input_value);
+    server.print(eeprom_config.dns_server[a]);
+    server.printP(Form_input_size3);
+    server.printP(Form_input_end);
+  }
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  
+  // print the current webserver port
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(WEB_PORT);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.printP(Form_input_text_start);
+  server.print(22);
+  server.printP(Form_input_value);
+  server.print(eeprom_config.webserverPort);
+  server.printP(Form_input_end);
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+  
+  //print the current DHCP config
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(DHCP_ACTIVE);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.printP(Form_cb);
+  server.print("0\"");
+   if(eeprom_config.use_dhcp != 1) {
+    server.printP(Form_cb_checked);
+  }
+  server.printP(Form_cb_off);   
+  
+  server.printP(Form_cb);
+  server.print("1\"");
+  if(eeprom_config.use_dhcp == 1) {
+    server.printP(Form_cb_checked);
+  }
+  server.printP(Form_cb_on);   
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+  
+  //print the current DHCP renew time
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(DHCP_REFRESH);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.printP(Form_input_text_start);
+  server.print(24);
+  server.printP(Form_input_value);
+  server.print(eeprom_config.dhcp_refresh_minutes);
+  server.printP(Form_input_size3);
+  server.printP(Form_input_end);
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  //print DHCP status
+  if(eeprom_config.use_dhcp == 1) {
+    server.printP(table_tr_start);
+    server.printP(table_td_start);	
+    server.printP(DHCP_STATE);
+    server.printP(table_td_end);
+    server.printP(table_td_start);
+    server.print(dhcp_state);
+    server.printP(table_td_end);
+    server.printP(table_tr_end);
+	 
+    server.printP(table_tr_start);
+    server.printP(table_td_start);	
+    server.printP(DHCP_STATE_TIME);
+    server.printP(table_td_end);
+    server.printP(table_td_start);
+    server.print(last_dhcp_renew/1000);
+    server.printP(table_td_end);
+    server.printP(table_tr_end);
   }
   
+  #ifdef USE_SYSTEM_LIBRARY
+  //print uptime
+  server.printP(table_tr_start);
+  server.printP(table_td_start);	
+  server.printP(UPTIME);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.print(sys.uptime());
+  server.printP(table_td_end);
+  server.printP(table_tr_end); 
 
-  //HTMl Tags schlieÃŸen
-  client.println(Page_end);
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(RAM_1);	
+  server.print(sys.ramFree());
+  server.printP(RAM_2);
+  server.print(sys.ramSize());
+  server.printP(table_td_end);
+  server.printP(table_tr_end); 
+  #endif
+
+  // print the current webserver port
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(UDP_PORT);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.printP(Form_input_text_start);
+  server.print(25);
+  server.printP(Form_input_value);
+  server.print(eeprom_config.UDPport);
+  server.printP(Form_input_end);
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  // print the current webserver port
+  server.printP(table_tr_start);
+  server.printP(table_td_start);
+  server.printP(SOUND);
+  server.printP(table_td_end);
+  server.printP(table_td_start);
+  server.printP(Form_input_text_start);
+  server.print(26);
+  server.printP(Form_input_value);
+  server.print(eeprom_config.play_sound);
+  server.printP(Form_input_end);
+  server.printP(table_td_end);
+  server.printP(table_tr_end);
+
+  
+  server.printP(table_end);
+  
+  //print the send button
+  server.printP(Form_input_send);    
+  server.printP(Form_end);
+  
+
+  
+  server.printP(Page_end);
+
 }
-// ###############################################################################################################################################################
 
-
-/* #############################################################################################################################################################
-* Create instances of the traffic light class
+/**
+* errorHTML() function
+* This function is called whenever a non extisting page is called.
+* It sends a HTTP 400 Bad Request header and the same as text.
 */
+void errorHTML(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
+{
+  /* this line sends the standard "HTTP 400 Bad Request" headers back to the
+     browser */
+  server.httpFail();
 
-#define MAX_COMMAND_LENGTH 11    //Max length for commands sent per UDP               
+  /* if we're handling a GET or POST, we can output our data here.
+     For a HEAD request, we just stop after outputting headers. */
+  if (type == WebServer::HEAD)
+    return;
+    
+  server.printP(Http400);
+  
+  server.printP(Page_end);
+}
+// END WEBCODE ######################################################################################################################################################
 
-#include "Traffic_Light.h"
-Traffic_Light TL_1;
-Traffic_Light TL_2;
-Traffic_Light TL_3;
-Traffic_Light TL_4;
-// #############################################################################################################################################################
+#define NAMELEN_TL 5
+#define VALUELEN_TL 12
+void tlHTML(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
+{
+  URLPARAM_RESULT rc;
+  char name[NAMELEN_TL];
+  char value[VALUELEN_TL];
+  boolean params_present = false;
+  int param_number = 0;
 
+  /* this line sends the standard "we're all OK" headers back to the
+     browser */
+  server.httpSuccess();
+
+  /* if we're handling a GET or POST, we can output our data here.
+     For a HEAD request, we just stop after outputting headers. */
+ // if (type == WebServer::HEAD)
+ //   return;
+
+  // check for parameters
+  if (strlen(url_tail)) {
+    while (strlen(url_tail)) {
+		rc = server.nextURLparam(&url_tail, name, NAMELEN_TL, value, VALUELEN_TL);
+		if (rc != URLPARAM_EOS) {
+                        params_present=true;
+                        // debug output for parameters
+                        #ifdef DEBUG
+                        Serial.print(name);
+                        server.print(name);
+                        Serial.print(" - "); 
+                        server.print(" - ");
+                        Serial.println(value);
+                        server.print(value);
+                        server.print("<br>");
+                        #endif
+  
+			param_number = atoi(&name[2]);
+                        Serial.println(param_number);
+			trafficLight(param_number,&String(value));
+		}
+    }
+  }
+
+  server.print("OK");
+
+}
 
 #ifdef PIEZO_PIN
 /* #############################################################################################################################################################
 * Melody
 * Play short Melodys with this Module
 */
+
+// storage 
+byte sign1_state;
+byte sign2_state;
+byte sign3_state;
+byte sign4_state;
+
 
 #include "pitches.h"
 #define NOTE_COUNT 8  //Max avaliable notes
@@ -780,28 +973,51 @@ void playMelody() {
 #endif
 
 
+
+
+
+
 /**
-* setup function called once at startup
+* setup() function
+* This function is called whenever the arduino is turned on.
 */
 void setup()
 {
-  Serial.begin(57000);
-
-  /* ##############################################################################################
-  * Network section
-  */
-  //call the setupNetwork function, which reads the EEPROM values and starts the ethernet
+  Serial.begin(SERIAL_BAUD);
+  
+  /* initialize the Ethernet adapter with the settings from eeprom */
+  delay(200); // some time to settle
   setupNetwork();
+  delay(200); // some time to settle
   
+  #define PREFIX ""
+  webserver = new WebServer(PREFIX, eeprom_config.webserverPort);
+
+  /* setup our default command that will be run when the user accesses
+   * the root page on the server */
+  webserver->setDefaultCommand(&indexHTML);
+
+  /* setup our default command that will be run when the user accesses
+   * a page NOT on the server */
+  webserver->setFailureCommand(&errorHTML);
+
+  /* run the same command if you try to load /index.html, a common
+   * default page name */
+  webserver->addCommand("index.html", &indexHTML);
+
+  /* display a network setup form. The configuration is stored in eeprom */
+  webserver->addCommand("setupNet.html", &setupNetHTML);
+
+  /* page for traffic light commands. */
+  webserver->addCommand("tl.html", &tlHTML);
+  
+  /* start the webserver */
+  webserver->begin();
+  
+#ifdef USE_UDP
   //set the UDP Port for receiving the commands
-  Udp.begin(eeprom_config.localPort);
- 
-  //Webserver initialisieren und starten
-  Webserver = new EthernetServer(eeprom_config.webserverPort);
-  Webserver->begin();
-  
-  // ##############################################################################################
-  
+  Udp.begin(eeprom_config.UDPport);
+#endif
 
   /* ##############################################################################################
   * Traffic light section
@@ -829,29 +1045,43 @@ void setup()
   delay(500);
   TL_4.allOff();
   // ##############################################################################################
+
 }
 
-byte sign1_state;
-byte sign2_state;
-byte sign3_state;
-byte sign4_state;
-
+/**
+* loop() function
+* Runs forver ....
+* 
+* Overview:
+* - Renew the DHCP lease
+* - Serve web clients
+*
+*/
 void loop()
 {
-  //renew DHCP lease
+  // renew DHCP lease
   renewDHCP(eeprom_config.dhcp_refresh_minutes);
+
+  char buff[200];
+  int len = 200;
+
+  /* process incoming connections one at a time forever */
+  webserver->processConnection(buff, &len);
   
-  //control traffic signs
-  trafficLight();
+#ifdef USE_UDP
+  //control traffic signs with UDP protocol
+  trafficLightUDP();
+#endif
   
+  
+#ifdef PIEZO_PIN
   //play sounds on sign changes
-  #ifdef PIEZO_PIN
-  if (eeprom_config.play_sound == 1) {
-    sign1_state = TL_1.signsChanged();
-    sign2_state = TL_2.signsChanged();
-    sign3_state = TL_3.signsChanged();
-    sign4_state = TL_4.signsChanged();
+  sign1_state = TL_1.signsChanged();
+  sign2_state = TL_2.signsChanged();
+  sign3_state = TL_3.signsChanged();
+  sign4_state = TL_4.signsChanged();
     
+  if (eeprom_config.play_sound == 1) {
     //if only the green sign is on play a "good" melody
     if (sign1_state == 4 || sign2_state == 4 || sign3_state == 4 || sign4_state == 4) {
       setMelody(1);
@@ -864,16 +1094,156 @@ void loop()
       playMelody();
     }
   }
-  #endif
-  
-  // check for new webclients
-  serveWebClient();
+#endif
+
 }
 
-void trafficLight() {
+//counter for received commands
+#ifdef DEBUG 
+long cmd_count = 0;
+#endif
+
+void trafficLight(byte traffic_light_number, String * command) {
+  
+    #ifdef DEBUG 
+      cmd_count++;
+      Serial.print("Commands count: ");
+      Serial.println(cmd_count);
+      Serial.print("RAM: ");
+      Serial.print(sys.ramFree());
+      Serial.print(" byte free of ");
+      Serial.println(sys.ramSize());
+      Serial.print("Sekunden: ");
+      Serial.println(millis()/1000);
+      Serial.println();
+    #endif
+    
+    // if the command is for all Traffic Lights
+    if(traffic_light_number == 0) {
+      if(command->compareTo("allOn") == 0) 
+      {
+        TL_1.allOn(); 
+        TL_2.allOn(); 
+        TL_3.allOn(); 
+        TL_4.allOn(); 
+      }
+      if(command->compareTo("allOff") == 0) 
+      {
+        TL_1.allOff(); 
+        TL_2.allOff(); 
+        TL_3.allOff(); 
+        TL_4.allOff();
+
+      }             
+    }
+
+    //Traffic Light 1
+    if(traffic_light_number == 1) 
+    {
+      if(command->compareTo("redOn") == 0) 
+      {
+        TL_1.redOn(); 
+      }
+      if(command->compareTo("redOff") == 0) 
+      {
+        TL_1.redOff(); 
+      }
+      if(command->compareTo("yellowOn") == 0) 
+      {
+        TL_1.yellowOn(); 
+      }
+      if(command->compareTo("yellowOff") == 0) 
+      {
+        TL_1.yellowOff(); 
+      }
+      if(command->compareTo("greenOn") == 0) 
+      {
+        TL_1.greenOn(); 
+      }
+      if(command->compareTo("greenOff") == 0) 
+      {
+        TL_1.greenOff(); 
+      }
+    } 
+ 
+    //Traffic Light 2
+    if(traffic_light_number == 2) 
+    {
+      if(command->compareTo("redOn") == 0) 
+      {
+        TL_2.redOn(); 
+      }
+      if(command->compareTo("redOff") == 0) 
+      {
+        TL_2.redOff(); 
+      }
+      if(command->compareTo("yellowOn") == 0) 
+      {
+        TL_2.yellowOn(); 
+      }
+      if(command->compareTo("yellowOff") == 0) 
+      {
+        TL_2.yellowOff(); 
+      }
+      if(command->compareTo("greenOn") == 0) 
+      {
+        TL_2.greenOn(); 
+      }
+      if(command->compareTo("greenOff") == 0) 
+      {
+        TL_2.greenOff(); 
+      }
+    } 
+
+    //Traffic Light 3 - only red and green sign
+    if(traffic_light_number == 3) 
+    {
+      if(command->compareTo("redOn") == 0) 
+      {
+        TL_3.redOn(); 
+      }
+      if(command->compareTo("redOff") == 0) 
+      {
+        TL_3.redOff(); 
+      }
+      if(command->compareTo("greenOn") == 0) 
+      {
+        TL_3.greenOn(); 
+      }
+      if(command->compareTo("greenOff") == 0) 
+      {
+        TL_3.greenOff(); 
+      }
+    } 
+
+    //Traffic Light 4 - only red and green sign
+    if(traffic_light_number == 4) 
+    {
+      if(command->compareTo("redOn") == 0) 
+      {
+        TL_4.redOn(); 
+      }
+      if(command->compareTo("redOff") == 0) 
+      {
+        TL_4.redOff(); 
+      }
+      if(command->compareTo("greenOn") == 0) 
+      {
+        TL_4.greenOn(); 
+      }
+      if(command->compareTo("greenOff") == 0) 
+      {
+        TL_4.greenOff(); 
+      }
+    } 	
+  }
+
+
+#ifdef USE_UDP
+void trafficLightUDP() {
   String traffic_light_number;
   String command;
-  
+
   // if there's data available, read a packet
   int packetSize = Udp.parsePacket();
   if(packetSize)
@@ -922,127 +1292,17 @@ void trafficLight() {
       Serial.println("\";");
     #endif
     
-    
-    // if the command is for all Traffic Lights
-    if(traffic_light_number.compareTo("a") == 0) {
-      if(command.compareTo("llOn") == 0) 
-      {
-        TL_1.allOn(); 
-        TL_2.allOn(); 
-        TL_3.allOn(); 
-        TL_4.allOn(); 
-      }
-      if(command.compareTo("llOff") == 0) 
-      {
-        TL_1.allOff(); 
-        TL_2.allOff(); 
-        TL_3.allOff(); 
-        TL_4.allOff();
-      }             
+    if (command.compareTo("llOn") == 0) {
+      command = "allOn\0";
+    } else if (command.compareTo("llOff") == 0) {
+      command = "allOff\0";
     }
-
-    //Traffic Light 1
-    if(traffic_light_number.compareTo("1") == 0) 
-    {
-      if(command.compareTo("redOn") == 0) 
-      {
-        TL_1.redOn(); 
-      }
-      if(command.compareTo("redOff") == 0) 
-      {
-        TL_1.redOff(); 
-      }
-      if(command.compareTo("yellowOn") == 0) 
-      {
-        TL_1.yellowOn(); 
-      }
-      if(command.compareTo("yellowOff") == 0) 
-      {
-        TL_1.yellowOff(); 
-      }
-      if(command.compareTo("greenOn") == 0) 
-      {
-        TL_1.greenOn(); 
-      }
-      if(command.compareTo("greenOff") == 0) 
-      {
-        TL_1.greenOff(); 
-      }
-    } 
- 
-    //Traffic Light 2
-    if(traffic_light_number.compareTo("2") == 0) 
-    {
-      if(command.compareTo("redOn") == 0) 
-      {
-        TL_2.redOn(); 
-      }
-      if(command.compareTo("redOff") == 0) 
-      {
-        TL_2.redOff(); 
-      }
-      if(command.compareTo("yellowOn") == 0) 
-      {
-        TL_2.yellowOn(); 
-      }
-      if(command.compareTo("yellowOff") == 0) 
-      {
-        TL_2.yellowOff(); 
-      }
-      if(command.compareTo("greenOn") == 0) 
-      {
-        TL_2.greenOn(); 
-      }
-      if(command.compareTo("greenOff") == 0) 
-      {
-        TL_2.greenOff(); 
-      }
-    } 
-
-    //Traffic Light 3 - only red and green sign
-    if(traffic_light_number.compareTo("3") == 0) 
-    {
-      if(command.compareTo("redOn") == 0) 
-      {
-        TL_3.redOn(); 
-      }
-      if(command.compareTo("redOff") == 0) 
-      {
-        TL_3.redOff(); 
-      }
-      if(command.compareTo("greenOn") == 0) 
-      {
-        TL_3.greenOn(); 
-      }
-      if(command.compareTo("greenOff") == 0) 
-      {
-        TL_3.greenOff(); 
-      }
-    } 
-
-    //Traffic Light 4 - only red and green sign
-    if(traffic_light_number.compareTo("4") == 0) 
-    {
-      if(command.compareTo("redOn") == 0) 
-      {
-        TL_4.redOn(); 
-      }
-      if(command.compareTo("redOff") == 0) 
-      {
-        TL_4.redOff(); 
-      }
-      if(command.compareTo("greenOn") == 0) 
-      {
-        TL_4.greenOn(); 
-      }
-      if(command.compareTo("greenOff") == 0) 
-      {
-        TL_4.greenOff(); 
-      }
-    } 	
+    
+    int lnr = atoi(&traffic_light_number[0]);
+    
+    if (lnr >= 0 && lnr <=4) {
+      trafficLight(lnr,&command);
+    }
   }
 }
-
-
-
-
+#endif
